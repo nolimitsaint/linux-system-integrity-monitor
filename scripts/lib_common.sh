@@ -53,6 +53,14 @@ check_psutil() {
 }
 
 # ---------------------------------------------------------------------------
+# Pause and wait for the user to press Enter before continuing.
+# ---------------------------------------------------------------------------
+wait_for_enter() {
+    echo ""
+    read -r -p "  [Press Enter to continue...]"
+}
+
+# ---------------------------------------------------------------------------
 # Clear the screen and print a header bar for a new demo section.
 # Usage: section_header "DEMO 1: File Integrity Detection"
 # ---------------------------------------------------------------------------

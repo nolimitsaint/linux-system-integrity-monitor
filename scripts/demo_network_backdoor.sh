@@ -80,6 +80,8 @@ python3 "$LSIM" --scan --no-respond || true
 kill "$L4444_PID" 2>/dev/null || true
 BGPIDS=("${BGPIDS[@]/$L4444_PID}")
 
+wait_for_enter
+
 # ---------------------------------------------------------------------------
 # Demo 2: Listener on port 9999 (common backdoor port)
 #         Triggers: HIGH (suspicious port)
@@ -102,6 +104,8 @@ python3 "$LSIM" --scan --no-respond || true
 kill "$L9999_PID" 2>/dev/null || true
 BGPIDS=("${BGPIDS[@]/$L9999_PID}")
 
+wait_for_enter
+
 # ---------------------------------------------------------------------------
 # Demo 3: Unexpected service on non-standard port (not in well-known list)
 #         Triggers: MEDIUM (unexpected listener on 0.0.0.0)
@@ -123,6 +127,8 @@ python3 "$LSIM" --scan --no-respond || true
 
 kill "$L7331_PID" 2>/dev/null || true
 BGPIDS=("${BGPIDS[@]/$L7331_PID}")
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 4: Raw socket (requires root — packet sniffer capability)

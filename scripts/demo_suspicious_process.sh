@@ -78,6 +78,8 @@ BGPIDS=("${BGPIDS[@]/$NC_PID}")
 rm -f "$TMP_NC"
 TMP_NC=""
 
+wait_for_enter
+
 # ---------------------------------------------------------------------------
 # Demo 2: Process with LD_PRELOAD in environment
 #         Triggers: HIGH (LD_PRELOAD injection)
@@ -122,6 +124,8 @@ if command -v gcc &>/dev/null; then
 else
     echo "[!] gcc not found — skipping LD_PRELOAD demo (install: sudo apt install gcc)"
 fi
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 3: Process running from a deleted executable

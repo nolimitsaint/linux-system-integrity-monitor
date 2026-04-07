@@ -87,7 +87,8 @@ python3 "$LSIM" --scan --no-respond || true
 
 # Restore so demo 2 starts clean
 cp "$HOSTS_BACKUP" /etc/hosts
-echo ""
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 2: Change permissions on a watched file → HIGH (permissions changed)

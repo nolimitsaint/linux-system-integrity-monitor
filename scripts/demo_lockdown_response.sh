@@ -109,6 +109,8 @@ echo ""
 
 python3 "$LSIM" --scan || true
 
+wait_for_enter
+
 # ---------------------------------------------------------------------------
 # Step 4: Show what happened
 # ---------------------------------------------------------------------------
@@ -138,6 +140,8 @@ if kill -0 "$MALWARE_PID" 2>/dev/null; then
 else
     echo "[+] PID $MALWARE_PID has been terminated by LSIM"
 fi
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Step 5: Release lockdown

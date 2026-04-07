@@ -99,6 +99,8 @@ python3 "$LSIM" --scan --no-respond || true
 cp "$SHADOW_BACKUP" /etc/shadow
 SHADOW_BACKUP=""
 
+wait_for_enter
+
 # ---------------------------------------------------------------------------
 # Demo 2: NOPASSWD:ALL in sudoers
 #         Triggers: HIGH (NOPASSWD sudoers entry)
@@ -119,6 +121,8 @@ python3 "$LSIM" --scan --no-respond || true
 
 # Remove for next demo
 rm -f "$DEMO_SUDOERS_FILE"
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 3: UID-0 account that is not root (root-equivalent backdoor account)
@@ -146,6 +150,8 @@ python3 "$LSIM" --scan --no-respond || true
 # Restore /etc/passwd
 cp "$PASSWD_BACKUP" /etc/passwd
 PASSWD_BACKUP=""
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 4: Simulate repeated failed logins in auth.log

@@ -79,7 +79,8 @@ python3 "$LSIM" --scan --no-respond || true
 # Restore immediately
 chmod "$HOSTS_ORIG_MODE" /etc/hosts
 HOSTS_ORIG_MODE=""
-echo ""
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 2: Unexpected SUID binary not in the known-safe list
@@ -104,7 +105,8 @@ python3 "$LSIM" --scan --no-respond || true
 # Remove the SUID binary
 rm -f "$TMP_SUID_BINARY"
 TMP_SUID_BINARY=""
-echo ""
+
+wait_for_enter
 
 # ---------------------------------------------------------------------------
 # Demo 3: /tmp missing the sticky bit

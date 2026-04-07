@@ -54,8 +54,8 @@ class NetworkScanner:
         findings = []
         seen = set()
         for conn in connections:
-            lport = conn.laddr.port if conn.laddr else None
-            rport = conn.raddr.port if conn.raddr else None
+            lport = conn.laddr.port if conn.laddr and hasattr(conn.laddr, "port") else None
+            rport = conn.raddr.port if conn.raddr and hasattr(conn.raddr, "port") else None
             for port in (lport, rport):
                 if port in SUSPICIOUS_PORTS and (conn.pid, port) not in seen:
                     seen.add((conn.pid, port))
@@ -154,7 +154,7 @@ class NetworkScanner:
         findings = []
         remote_counts: Counter = Counter()
         for conn in connections:
-            if conn.status == "ESTABLISHED" and conn.raddr:
+            if conn.status == "ESTABLISHED" and conn.raddr and hasattr(conn.raddr, "ip"):
                 remote_counts[conn.raddr.ip] += 1
 
         for ip, count in remote_counts.items():
