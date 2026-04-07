@@ -1,0 +1,7 @@
+psutil>=5.9.0
+rich>=13.0.0
+pytest>=7.0.0
+pytest-mock>=3.0.0
+# Note: python-apt is a system package (not pip-installable).
+# Install with: sudo apt install python3-apt
+# If missing, the packages auditor falls back to subprocess (apt list --upgradable).

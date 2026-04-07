@@ -1,3 +1,4 @@
+# DEPRECATED: Superseded by lsim/ package (Sprint 2+). Run: sudo python3 lsim.py --scan
 #!/usr/bin/env python3
 """
 Linux System Integrity Monitor
