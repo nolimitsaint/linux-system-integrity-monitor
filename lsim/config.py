@@ -1,5 +1,6 @@
 """
-LSIM Configuration — all constants live here, no magic strings elsewhere.
+All configuration constants for LSIM. Keeping everything in one place
+makes it easy to add new watched files, ports, or SUID binaries.
 """
 
 import os
@@ -54,7 +55,7 @@ SEVERITY_MEDIUM = "MEDIUM"
 SEVERITY_LOW = "LOW"
 SEVERITY_INFO = "INFO"
 
-# Ordered for sorting (lower index = higher severity)
+# Used to sort findings by severity (CRITICAL first)
 SEVERITY_ORDER = [
     SEVERITY_CRITICAL,
     SEVERITY_HIGH,
@@ -84,7 +85,6 @@ SUSPICIOUS_PROC_PATHS = [
 # ---------------------------------------------------------------------------
 # Network
 # ---------------------------------------------------------------------------
-# dict: port → description (description surfaces in Finding.detail)
 SUSPICIOUS_PORTS: dict = {
     4444: "Metasploit default listener",
     1337: "Common backdoor/hacker port",
@@ -152,6 +152,5 @@ KNOWN_SETUID_BINARIES = [
 # ---------------------------------------------------------------------------
 LOCKDOWN_CHAIN = "LSIM_LOCKDOWN"
 
-# Admin user: the account whose processes/connections are always preserved.
-# Read SUDO_USER at import time so the responder knows who not to disable.
+# Who ran sudo — we never want to lock out the admin running LSIM
 ADMIN_USER: str = os.environ.get("SUDO_USER", "root") or "root"

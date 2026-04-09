@@ -122,66 +122,6 @@ class TestProcessScannerPrivEscalation(unittest.TestCase):
         self.assertEqual(findings, [])
 
 
-class TestProcessScannerLdPreload(unittest.TestCase):
-    def test_detects_ld_preload(self):
-        mock_psutil = MagicMock()
-        proc = _make_proc(pid=888, name="hijacked", exe="/usr/bin/hijacked",
-                          environ={"LD_PRELOAD": "/tmp/hook.so", "PATH": "/usr/bin"})
-        mock_psutil.process_iter.return_value = [proc]
-        mock_psutil.NoSuchProcess = Exception
-        mock_psutil.AccessDenied = Exception
-
-        scanner = ProcessScanner()
-        findings = scanner._check_ld_preload(mock_psutil)
-
-        self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].severity, SEVERITY_HIGH)
-        self.assertIn("LD_PRELOAD", findings[0].title)
-
-    def test_ignores_clean_environ(self):
-        mock_psutil = MagicMock()
-        proc = _make_proc(pid=300, name="clean", environ={"PATH": "/usr/bin"})
-        mock_psutil.process_iter.return_value = [proc]
-        mock_psutil.NoSuchProcess = Exception
-        mock_psutil.AccessDenied = Exception
-
-        scanner = ProcessScanner()
-        findings = scanner._check_ld_preload(mock_psutil)
-        self.assertEqual(findings, [])
-
-
-class TestProcessScannerDeletedExec(unittest.TestCase):
-    def test_detects_deleted_executable(self):
-        mock_psutil = MagicMock()
-        proc = _make_proc(pid=1111, name="ghost")
-        mock_psutil.process_iter.return_value = [proc]
-        mock_psutil.NoSuchProcess = Exception
-        mock_psutil.AccessDenied = Exception
-
-        scanner = ProcessScanner()
-        with patch("os.path.lexists", return_value=True), \
-             patch("os.readlink", return_value="/tmp/malware (deleted)"):
-            findings = scanner._check_deleted_exec(mock_psutil)
-
-        self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].severity, SEVERITY_HIGH)
-        self.assertTrue(findings[0].auto_remediate)
-
-    def test_ignores_normal_executable(self):
-        mock_psutil = MagicMock()
-        proc = _make_proc(pid=400, name="sshd")
-        mock_psutil.process_iter.return_value = [proc]
-        mock_psutil.NoSuchProcess = Exception
-        mock_psutil.AccessDenied = Exception
-
-        scanner = ProcessScanner()
-        with patch("os.path.lexists", return_value=True), \
-             patch("os.readlink", return_value="/usr/sbin/sshd"):
-            findings = scanner._check_deleted_exec(mock_psutil)
-
-        self.assertEqual(findings, [])
-
-
 class TestProcessScannerImportError(unittest.TestCase):
     def test_returns_info_finding_when_psutil_missing(self):
         with patch.dict(sys.modules, {"psutil": None}):

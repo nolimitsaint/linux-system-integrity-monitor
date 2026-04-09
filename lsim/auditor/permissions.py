@@ -1,28 +1,23 @@
 """
-Permissions Auditor — finds dangerous file/directory permissions.
+Permissions auditor - finds dangerous file permission settings.
+Checks for unexpected SUID binaries, world-writable files in critical dirs,
+and files not owned by any existing user/group.
 """
 
 import grp
 import os
 import pwd
-import stat
 import subprocess
 
 from lsim.config import (
     KNOWN_SETUID_BINARIES,
     SEVERITY_CRITICAL,
-    SEVERITY_HIGH,
     SEVERITY_MEDIUM,
 )
 from lsim.finding import Finding
 
-_CRITICAL_DIRS_FOR_WORLD_WRITABLE = [
-    "/etc",
-    "/usr/bin",
-    "/usr/sbin",
-    "/bin",
-    "/sbin",
-]
+# Directories where world-writable files are a big problem
+_CRITICAL_DIRS = ["/etc", "/usr/bin", "/usr/sbin", "/bin", "/sbin"]
 
 
 def _run(cmd: list, timeout: int = 60) -> str:
@@ -38,14 +33,11 @@ class PermissionsAuditor:
         findings = []
         findings += self._find_unexpected_suid()
         findings += self._find_world_writable_critical()
-        findings += self._check_tmp_sticky()
         findings += self._find_unowned_files()
         return findings
 
-    # ------------------------------------------------------------------
-    # Find SUID binaries not in the known-good list
-    # ------------------------------------------------------------------
     def _find_unexpected_suid(self) -> list:
+        """Find SUID binaries that aren't in our known-good list."""
         output = _run([
             "find", "/", "-xdev", "-perm", "-4000", "-type", "f",
             "-not", "-path", "/proc/*",
@@ -64,32 +56,25 @@ class PermissionsAuditor:
                     severity=SEVERITY_CRITICAL,
                     title=f"Unexpected SUID binary: {path}",
                     detail=(
-                        f"SUID binary found at {path} which is not in the known-safe list.\n"
-                        "SUID binaries run with the file owner's privileges (usually root) "
-                        "regardless of who executes them."
+                        f"{path} has the SUID bit set but isn't in the known-safe list.\n"
+                        "SUID binaries run as the file owner (usually root) regardless of who executes them."
                     ),
                     recommendation=(
-                        f"Verify {path} legitimacy. If unexpected, remove SUID bit: "
-                        f"sudo chmod u-s {path}"
+                        f"Verify {path} is supposed to be there. "
+                        f"If not, remove the SUID bit: sudo chmod u-s {path}"
                     ),
                     filepath=path,
                     auto_remediate=False,
                 ))
         return findings
 
-    # ------------------------------------------------------------------
-    # World-writable files in critical directories
-    # ------------------------------------------------------------------
     def _find_world_writable_critical(self) -> list:
-        dirs_args = _CRITICAL_DIRS_FOR_WORLD_WRITABLE[:]
-        existing_dirs = [d for d in dirs_args if os.path.isdir(d)]
-        if not existing_dirs:
+        """Find files in critical directories that are writable by anyone."""
+        existing = [d for d in _CRITICAL_DIRS if os.path.isdir(d)]
+        if not existing:
             return []
 
-        output = _run(
-            ["find"] + existing_dirs + ["-perm", "-o+w", "-type", "f"],
-            timeout=30,
-        )
+        output = _run(["find"] + existing + ["-perm", "-o+w", "-type", "f"], timeout=30)
 
         findings = []
         for line in output.splitlines():
@@ -101,8 +86,8 @@ class PermissionsAuditor:
                 severity=SEVERITY_CRITICAL,
                 title=f"World-writable file in critical directory: {path}",
                 detail=(
-                    f"{path} is writable by any user on the system. "
-                    "An attacker could modify this file to compromise system integrity."
+                    f"{path} is writable by any user. "
+                    "An attacker could modify this file to compromise the system."
                 ),
                 recommendation=f"Fix permissions: sudo chmod o-w {path}",
                 filepath=path,
@@ -110,39 +95,11 @@ class PermissionsAuditor:
             ))
         return findings
 
-    # ------------------------------------------------------------------
-    # /tmp sticky bit
-    # ------------------------------------------------------------------
-    def _check_tmp_sticky(self) -> list:
-        try:
-            mode = os.stat("/tmp").st_mode
-        except OSError:
-            return []
-
-        if not (mode & stat.S_ISVTX):
-            return [Finding(
-                category="Permissions",
-                severity=SEVERITY_HIGH,
-                title="/tmp directory is missing the sticky bit",
-                detail=(
-                    "/tmp should have the sticky bit set (permissions 1777) so that only "
-                    "file owners can delete their own files. Without it, any user can delete "
-                    f"other users' temp files. Current permissions: {oct(stat.S_IMODE(mode))}"
-                ),
-                recommendation="Fix: sudo chmod 1777 /tmp",
-                filepath="/tmp",
-                auto_remediate=False,
-            )]
-        return []
-
-    # ------------------------------------------------------------------
-    # Unowned files (uid/gid not in passwd/group databases)
-    # ------------------------------------------------------------------
     def _find_unowned_files(self) -> list:
-        # Build set of valid UIDs and GIDs
-        valid_uids = {entry.pw_uid for entry in pwd.getpwall()}
+        """Find files whose UID or GID doesn't match any existing user/group."""
+        valid_uids = {e.pw_uid for e in pwd.getpwall()}
         try:
-            valid_gids = {entry.gr_gid for entry in grp.getgrall()}
+            valid_gids = {e.gr_gid for e in grp.getgrall()}
         except Exception:
             valid_gids = set()
 
@@ -167,12 +124,12 @@ class PermissionsAuditor:
                         title=f"Unowned file: {path}",
                         detail=(
                             f"{path} has uid={st.st_uid} gid={st.st_gid} "
-                            "which do not correspond to any existing user/group. "
-                            "This may be a leftover from a deleted account."
+                            "which don't match any user or group in the system. "
+                            "Possibly leftover from a deleted account."
                         ),
                         recommendation=(
                             f"Assign ownership: sudo chown root:root {path} "
-                            "or remove if the file is not needed."
+                            "or remove if not needed."
                         ),
                         filepath=path,
                         auto_remediate=False,

@@ -7,7 +7,7 @@ All tests mock pwd, shadow file, and auth.log reads.
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
-from lsim.config import SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM
+from lsim.config import SEVERITY_CRITICAL, SEVERITY_HIGH
 from lsim.scanner.user_scanner import UserScanner
 
 
@@ -164,49 +164,6 @@ class TestSudoEntries(unittest.TestCase):
             scanner = UserScanner()
             findings = scanner._check_sudo_entries()
         self.assertEqual(findings, [])
-
-
-class TestAuthLog(unittest.TestCase):
-    def test_detects_repeated_failed_logins(self):
-        # Generate 11 failed login attempts for 'attacker'
-        log_lines = "\n".join(
-            [f"Apr  1 12:00:{i:02d} host sshd[123]: Failed password for attacker from 1.2.3.4 port 22 ssh2"
-             for i in range(11)]
-        ) + "\n"
-
-        with patch("lsim.scanner.user_scanner.os.path.isfile", return_value=True), \
-             patch("builtins.open", mock_open(read_data=log_lines)):
-            scanner = UserScanner()
-            findings = scanner._check_auth_log()
-
-        failed_findings = [f for f in findings if "failed" in f.title.lower()]
-        self.assertTrue(len(failed_findings) >= 1)
-        self.assertEqual(failed_findings[0].severity, SEVERITY_MEDIUM)
-
-    def test_no_finding_for_few_failures(self):
-        log_lines = (
-            "Apr  1 12:00:01 host sshd[123]: Failed password for alice from 1.2.3.4 port 22 ssh2\n"
-        )
-        with patch("lsim.scanner.user_scanner.os.path.isfile", return_value=True), \
-             patch("builtins.open", mock_open(read_data=log_lines)):
-            scanner = UserScanner()
-            findings = scanner._check_auth_log()
-
-        failed_findings = [f for f in findings if "failed" in f.title.lower()]
-        self.assertEqual(failed_findings, [])
-
-    def test_detects_root_ssh_login(self):
-        log_lines = (
-            "Apr  1 12:00:01 host sshd[123]: Accepted publickey for root from 5.6.7.8 port 22 ssh2\n"
-        )
-        with patch("lsim.scanner.user_scanner.os.path.isfile", return_value=True), \
-             patch("builtins.open", mock_open(read_data=log_lines)):
-            scanner = UserScanner()
-            findings = scanner._check_auth_log()
-
-        root_findings = [f for f in findings if "root" in f.title.lower()]
-        self.assertTrue(len(root_findings) >= 1)
-        self.assertEqual(root_findings[0].severity, SEVERITY_HIGH)
 
 
 if __name__ == "__main__":

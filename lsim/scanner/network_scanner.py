@@ -1,8 +1,7 @@
 """
-Network Scanner — detects suspicious network connections and listening services.
+Network scanner - checks active network connections for anything suspicious.
 """
 
-import socket
 from collections import Counter
 
 from lsim.config import (
@@ -12,8 +11,8 @@ from lsim.config import (
 )
 from lsim.finding import Finding
 
-# Ports that are expected to listen on all interfaces for common services
-_WELL_KNOWN_LISTENER_PORTS = {22, 80, 443, 25, 587, 465, 143, 993, 110, 995, 53, 123}
+# Ports that are expected to listen on all interfaces for normal services
+_WELL_KNOWN_PORTS = {22, 80, 443, 25, 587, 465, 143, 993, 110, 995, 53, 123}
 
 
 class NetworkScanner:
@@ -29,7 +28,6 @@ class NetworkScanner:
                 recommendation="Run: sudo bash setup.sh",
             )]
 
-        findings = []
         try:
             connections = psutil.net_connections(kind="all")
         except psutil.AccessDenied:
@@ -41,16 +39,14 @@ class NetworkScanner:
                 recommendation="Run: sudo python3 lsim.py --scan",
             )]
 
+        findings = []
         findings += self._check_suspicious_ports(connections, psutil)
-        findings += self._check_raw_sockets(connections)
         findings += self._check_unexpected_listeners(connections)
         findings += self._check_connection_floods(connections)
         return findings
 
-    # ------------------------------------------------------------------
-    # Connections to/from suspicious ports
-    # ------------------------------------------------------------------
     def _check_suspicious_ports(self, connections, psutil) -> list:
+        """Flag connections to/from ports known to be used by attack tools."""
         findings = []
         seen = set()
         for conn in connections:
@@ -79,42 +75,15 @@ class NetworkScanner:
                             f"  Local: {conn.laddr}  Remote: {conn.raddr}  Status: {conn.status}"
                         ),
                         recommendation=(
-                            f"Investigate port {port} usage. This port is commonly associated with "
-                            f"{SUSPICIOUS_PORTS[port]}."
+                            f"Investigate port {port}. Commonly associated with {SUSPICIOUS_PORTS[port]}."
                         ),
                         pid=conn.pid,
                         auto_remediate=False,
                     ))
         return findings
 
-    # ------------------------------------------------------------------
-    # Raw sockets (packet crafting / sniffing)
-    # ------------------------------------------------------------------
-    def _check_raw_sockets(self, connections) -> list:
-        findings = []
-        for conn in connections:
-            if conn.type == socket.SOCK_RAW:
-                findings.append(Finding(
-                    category="Network",
-                    severity=SEVERITY_HIGH,
-                    title=f"Raw socket open by PID {conn.pid}",
-                    detail=(
-                        f"PID {conn.pid} has an open raw socket. Raw sockets allow arbitrary "
-                        "packet crafting or passive sniffing of all network traffic."
-                    ),
-                    recommendation=(
-                        f"Investigate PID {conn.pid}. Raw sockets require root and are rarely "
-                        "needed by normal applications."
-                    ),
-                    pid=conn.pid,
-                    auto_remediate=False,
-                ))
-        return findings
-
-    # ------------------------------------------------------------------
-    # Unexpected listeners on all interfaces (non-well-known ports)
-    # ------------------------------------------------------------------
     def _check_unexpected_listeners(self, connections) -> list:
+        """Flag services listening on 0.0.0.0 that aren't in the well-known port list."""
         findings = []
         for conn in connections:
             if conn.status != "LISTEN":
@@ -122,11 +91,10 @@ class NetworkScanner:
             laddr = conn.laddr
             if not laddr:
                 continue
-            # Only flag listeners on all interfaces
             if laddr.ip not in ("0.0.0.0", "::"):
                 continue
             port = laddr.port
-            if port in _WELL_KNOWN_LISTENER_PORTS:
+            if port in _WELL_KNOWN_PORTS:
                 continue
             if port in SUSPICIOUS_PORTS:
                 continue  # already reported above
@@ -135,41 +103,39 @@ class NetworkScanner:
                 severity=SEVERITY_MEDIUM,
                 title=f"Unexpected service listening on 0.0.0.0:{port}",
                 detail=(
-                    f"Port {port} is listening on all network interfaces (0.0.0.0). "
+                    f"Port {port} is listening on all interfaces. "
                     f"PID: {conn.pid}. This service is publicly reachable."
                 ),
                 recommendation=(
-                    f"Verify that port {port} should be publicly accessible. "
-                    "If not, restrict it with: sudo ufw deny {port}"
+                    f"Verify port {port} should be publicly accessible. "
+                    "If not, restrict it: sudo ufw deny {port}"
                 ),
                 pid=conn.pid,
                 auto_remediate=False,
             ))
         return findings
 
-    # ------------------------------------------------------------------
-    # Connection flood from single remote IP (>20 ESTABLISHED)
-    # ------------------------------------------------------------------
     def _check_connection_floods(self, connections) -> list:
+        """Flag a single remote IP with more than 20 established connections."""
         findings = []
-        remote_counts: Counter = Counter()
+        counts: Counter = Counter()
         for conn in connections:
             if conn.status == "ESTABLISHED" and conn.raddr and hasattr(conn.raddr, "ip"):
-                remote_counts[conn.raddr.ip] += 1
+                counts[conn.raddr.ip] += 1
 
-        for ip, count in remote_counts.items():
+        for ip, count in counts.items():
             if count > 20:
                 findings.append(Finding(
                     category="Network",
                     severity=SEVERITY_MEDIUM,
                     title=f"Connection flood from {ip} ({count} connections)",
                     detail=(
-                        f"Remote IP {ip} has {count} ESTABLISHED connections to this host. "
-                        "This may indicate a DoS attempt, port scan, or data exfiltration."
+                        f"{ip} has {count} established connections to this host. "
+                        "Could be a DoS attempt, port scan, or data exfiltration."
                     ),
                     recommendation=(
-                        f"Review connections from {ip}. Consider blocking with: "
-                        f"sudo ufw deny from {ip}"
+                        f"Review connections from {ip}. "
+                        f"Block if needed: sudo ufw deny from {ip}"
                     ),
                     auto_remediate=False,
                 ))

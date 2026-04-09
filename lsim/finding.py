@@ -1,6 +1,6 @@
 """
-Finding dataclass and state determination logic.
-All scanner, auditor, and responder modules exchange Finding objects.
+Finding class - represents a single security issue detected by a scanner or auditor.
+Also contains the logic to map findings to an overall system state.
 """
 
 from dataclasses import dataclass, field
@@ -42,11 +42,8 @@ class Finding:
 
 def determine_state(findings: list) -> str:
     """
-    Map a list of Finding objects to the overall system state.
-
-    LOCKDOWN  — any CRITICAL or HIGH finding
-    AT_RISK   — at least one MEDIUM finding, no CRITICAL/HIGH
-    SECURE    — only LOW or INFO findings (or no findings at all)
+    Returns LOCKDOWN if any CRITICAL/HIGH findings exist,
+    AT_RISK if there are MEDIUM findings, or SECURE otherwise.
     """
     has_medium = False
     for f in findings:

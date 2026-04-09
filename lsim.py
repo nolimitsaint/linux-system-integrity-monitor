@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-LSIM — Linux System Integrity Monitor
-Entry point / CLI
-
-Usage: sudo python3 lsim.py [OPTIONS]
+LSIM - Linux System Integrity Monitor
+Main entry point. Run with --scan, --baseline, --daemon, or --unlock.
+Requires root.
 """
 
 import argparse
@@ -13,9 +12,7 @@ import signal
 import sys
 import time
 
-# ---------------------------------------------------------------------------
-# Root check — must happen before any module imports that touch /var/lib/lsim
-# ---------------------------------------------------------------------------
+# Root check before any imports so we fail fast
 if os.geteuid() != 0:
     print("[-] LSIM must be run as root: sudo python3 lsim.py --scan", file=sys.stderr)
     sys.exit(1)
@@ -39,10 +36,6 @@ from lsim.scanner.user_scanner import UserScanner
 
 _log = get_logger()
 
-
-# ---------------------------------------------------------------------------
-# CLI definition
-# ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -85,10 +78,6 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-# ---------------------------------------------------------------------------
-# Baseline creation
-# ---------------------------------------------------------------------------
-
 def cmd_baseline(args):
     print("[*] Creating integrity baseline...")
     print(f"    Watching {len(WATCHED_FILES)} paths")
@@ -102,17 +91,8 @@ def cmd_baseline(args):
     print("[+] Run 'sudo python3 lsim.py --scan' to check for changes.")
 
 
-# ---------------------------------------------------------------------------
-# Full scan
-# ---------------------------------------------------------------------------
-
 def run_scan(args) -> int:
-    """
-    Execute all scanners and auditors, collect findings, determine state,
-    optionally respond, report, and log.
-
-    Returns: 0 (SECURE), 1 (AT_RISK), 2 (LOCKDOWN)
-    """
+    """Run all scanners and auditors, then report and optionally respond. Returns exit code."""
     findings: list = []
     reporter = Reporter()
     logger_obj = LSIMLogger()
@@ -160,12 +140,8 @@ def run_scan(args) -> int:
     return {"SECURE": 0, "AT_RISK": 1, "LOCKDOWN": 2}.get(state, 1)
 
 
-# ---------------------------------------------------------------------------
-# Automated response
-# ---------------------------------------------------------------------------
-
 def respond_to_lockdown(findings: list, logger_obj: LSIMLogger) -> list:
-    """Execute automated responses for LOCKDOWN-triggering findings."""
+    """Kill bad processes, lock bad accounts, and activate network lockdown."""
     actions = []
     killer = ProcessKiller()
     disabler = UserDisabler()
@@ -202,10 +178,6 @@ def respond_to_lockdown(findings: list, logger_obj: LSIMLogger) -> list:
     return actions
 
 
-# ---------------------------------------------------------------------------
-# Report (last log)
-# ---------------------------------------------------------------------------
-
 def cmd_report(_args):
     from lsim.config import LOG_FILE_JSONL
     if not os.path.isfile(LOG_FILE_JSONL):
@@ -222,10 +194,6 @@ def cmd_report(_args):
     except (OSError, json.JSONDecodeError) as exc:
         print(f"[-] Error reading log: {exc}")
 
-
-# ---------------------------------------------------------------------------
-# Daemon mode
-# ---------------------------------------------------------------------------
 
 _daemon_running = True
 
@@ -250,16 +218,11 @@ def cmd_daemon(args):
         print("\n[*] Daemon stopped by user")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    # Resolve the default --scan vs explicit mode flags
-    # argparse mutually_exclusive_group: if user sets --baseline etc., --scan is False
+    # If the user passed any other mode flag, turn off the default --scan
     explicit_modes = (args.baseline, args.daemon, args.report, args.lockdown, args.unlock)
     if any(explicit_modes):
         args.scan = False

@@ -3,10 +3,9 @@
 # LSIM Demo: User Account Security Threats
 #
 # Demonstrates:
-#   - CRITICAL finding: user account with UID 0 (root-equivalent)
 #   - HIGH finding: user account with no password set
 #   - HIGH finding: NOPASSWD:ALL in sudoers
-#   - MEDIUM finding: repeated failed SSH login attempts in auth.log
+#   - CRITICAL finding: user account with UID 0 (root-equivalent)
 #
 # Creates a temporary test user and sudoers file, restores on exit.
 # =============================================================================
@@ -76,7 +75,7 @@ echo "[+] User '$DEMO_USER' created"
 # Demo 1: User with no password set (empty shadow hash)
 #         Triggers: HIGH (empty password)
 # ---------------------------------------------------------------------------
-section_header "DEMO 1/4: User with no password  |  Expected: HIGH"
+section_header "DEMO 1/3: User with no password  |  Expected: HIGH"
 
 
 SHADOW_BACKUP=$(mktemp /tmp/shadow_backup.XXXXXX)
@@ -105,7 +104,7 @@ wait_for_enter
 # Demo 2: NOPASSWD:ALL in sudoers
 #         Triggers: HIGH (NOPASSWD sudoers entry)
 # ---------------------------------------------------------------------------
-section_header "DEMO 2/4: NOPASSWD:ALL sudoers entry  |  Expected: HIGH"
+section_header "DEMO 2/3: NOPASSWD:ALL sudoers entry  |  Expected: HIGH"
 echo ""
 
 echo "[*] Writing dangerous sudoers entry to $DEMO_SUDOERS_FILE..."
@@ -128,7 +127,7 @@ wait_for_enter
 # Demo 3: UID-0 account that is not root (root-equivalent backdoor account)
 #         Triggers: CRITICAL (unauthorized root-equivalent account)
 # ---------------------------------------------------------------------------
-section_header "DEMO 3/4: Non-root account with UID 0  |  Expected: CRITICAL"
+section_header "DEMO 3/3: Non-root account with UID 0  |  Expected: CRITICAL"
 
 
 PASSWD_BACKUP=$(mktemp /tmp/passwd_backup.XXXXXX)
@@ -150,48 +149,6 @@ python3 "$LSIM" --scan --no-respond || true
 # Restore /etc/passwd
 cp "$PASSWD_BACKUP" /etc/passwd
 PASSWD_BACKUP=""
-
-wait_for_enter
-
-# ---------------------------------------------------------------------------
-# Demo 4: Simulate repeated failed logins in auth.log
-#         Triggers: MEDIUM (brute-force indicator)
-# ---------------------------------------------------------------------------
-section_header "DEMO 4/4: Brute-force attack in auth.log  |  Expected: MEDIUM"
-
-
-AUTH_LOG="/var/log/auth.log"
-INJECTED_LINES=()
-
-if [ -w "$AUTH_LOG" ] || [ -w "$(dirname "$AUTH_LOG")" ]; then
-    TIMESTAMP=$(date "+%b %e %H:%M:%S")
-    HOSTNAME=$(hostname)
-
-    echo "[*] Injecting 15 failed login attempts into $AUTH_LOG..."
-    for i in $(seq 1 15); do
-        LINE="$TIMESTAMP $HOSTNAME sshd[99999]: Failed password for $DEMO_USER from 10.0.0.99 port $((50000 + i)) ssh2"
-        echo "$LINE" >> "$AUTH_LOG"
-        INJECTED_LINES+=("$LINE")
-    done
-    echo "[+] 15 failed login entries injected"
-    echo ""
-
-    echo "[*] Running LSIM scan..."
-    echo ""
-    python3 "$LSIM" --scan --no-respond || true
-
-    # Remove injected lines
-    echo ""
-    echo "[*] Removing injected auth.log entries..."
-    for line in "${INJECTED_LINES[@]}"; do
-        # Escape special chars for grep -F
-        grep -vF "$line" "$AUTH_LOG" > "${AUTH_LOG}.tmp" && mv "${AUTH_LOG}.tmp" "$AUTH_LOG" || true
-    done
-    echo "[+] Auth.log cleaned"
-else
-    echo "[!] Cannot write to $AUTH_LOG — skipping this demo"
-    echo "    (Run as root with write access to /var/log/auth.log)"
-fi
 
 # ---------------------------------------------------------------------------
 # Done

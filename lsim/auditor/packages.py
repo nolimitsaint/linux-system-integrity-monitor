@@ -1,6 +1,6 @@
 """
-Packages Auditor — checks for outdated packages and stale apt cache.
-Uses python-apt if available, falls back to subprocess.
+Packages auditor - checks for pending security updates and stale apt cache.
+Tries python-apt first, falls back to running apt list --upgradable.
 """
 
 import os
@@ -11,7 +11,7 @@ from lsim.config import SEVERITY_HIGH, SEVERITY_INFO, SEVERITY_LOW
 from lsim.finding import Finding
 
 _APT_CACHE_FILE = "/var/cache/apt/pkgcache.bin"
-_STALE_CACHE_DAYS = 7
+_STALE_DAYS = 7
 
 
 class PackagesAuditor:
@@ -21,35 +21,25 @@ class PackagesAuditor:
         findings += self._check_upgradable()
         return findings
 
-    # ------------------------------------------------------------------
-    # Check when apt-get update was last run
-    # ------------------------------------------------------------------
     def _check_cache_age(self) -> list:
         if not os.path.isfile(_APT_CACHE_FILE):
             return []
         try:
-            mtime = os.path.getmtime(_APT_CACHE_FILE)
-            age_days = (time.time() - mtime) / 86400
-            if age_days > _STALE_CACHE_DAYS:
+            age_days = (time.time() - os.path.getmtime(_APT_CACHE_FILE)) / 86400
+            if age_days > _STALE_DAYS:
                 return [Finding(
                     category="Packages",
                     severity=SEVERITY_INFO,
                     title=f"Package cache is stale ({int(age_days)} days old)",
-                    detail=(
-                        f"apt package cache at {_APT_CACHE_FILE} was last updated "
-                        f"{int(age_days)} days ago. You may be missing security updates."
-                    ),
+                    detail=f"apt cache last updated {int(age_days)} days ago. You may be missing security updates.",
                     recommendation="Run: sudo apt update",
                 )]
         except OSError:
             pass
         return []
 
-    # ------------------------------------------------------------------
-    # Check for upgradable packages, especially security updates
-    # ------------------------------------------------------------------
     def _check_upgradable(self) -> list:
-        # Try python-apt first (more reliable, no TTY needed)
+        # Try python-apt first since it doesn't need a TTY
         try:
             return self._check_upgradable_python_apt()
         except ImportError:
@@ -57,7 +47,7 @@ class PackagesAuditor:
         return self._check_upgradable_subprocess()
 
     def _check_upgradable_python_apt(self) -> list:
-        import apt  # type: ignore  # system package, not pip-installable
+        import apt  # type: ignore
         cache = apt.Cache()
         cache.open()
 
@@ -86,17 +76,17 @@ class PackagesAuditor:
                 severity=SEVERITY_HIGH,
                 title=f"{len(security_pkgs)} security update(s) pending",
                 detail=(
-                    f"The following packages have pending security updates:\n  "
+                    "Packages with security updates:\n  "
                     + "\n  ".join(security_pkgs[:20])
                     + (f"\n  ... and {len(security_pkgs) - 20} more" if len(security_pkgs) > 20 else "")
                 ),
-                recommendation="Apply security updates immediately: sudo apt-get upgrade",
+                recommendation="Apply security updates: sudo apt-get upgrade",
             ))
         if other_pkgs:
             findings.append(Finding(
                 category="Packages",
                 severity=SEVERITY_LOW,
-                title=f"{len(other_pkgs)} non-security package update(s) available",
+                title=f"{len(other_pkgs)} non-security update(s) available",
                 detail=(
                     f"{len(other_pkgs)} packages can be upgraded:\n  "
                     + "\n  ".join(other_pkgs[:10])
@@ -110,9 +100,7 @@ class PackagesAuditor:
         try:
             result = subprocess.run(
                 ["apt", "list", "--upgradable"],
-                capture_output=True,
-                text=True,
-                timeout=30,
+                capture_output=True, text=True, timeout=30,
                 env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
             )
             output = result.stdout
@@ -148,7 +136,7 @@ class PackagesAuditor:
             findings.append(Finding(
                 category="Packages",
                 severity=SEVERITY_LOW,
-                title=f"{len(other_pkgs)} non-security package update(s) available",
+                title=f"{len(other_pkgs)} non-security update(s) available",
                 detail=(
                     f"{len(other_pkgs)} packages can be upgraded:\n  "
                     + "\n  ".join(other_pkgs[:10])

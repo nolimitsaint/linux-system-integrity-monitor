@@ -19,14 +19,14 @@ LSIM continuously monitors your system and reports one of three states:
 The tool is split into **scanners** (things that are actively happening right now) and **auditors** (things that are misconfigured and could be exploited).
 
 **Scanners:**
-- File integrity — hashes critical system files and alerts if anything changes (uses SHA-256, not MD5)
-- Process scanner — looks for processes running from /tmp, suspicious tool names (nc, nmap, xmrig, etc.), LD_PRELOAD injection, deleted executables still running, and privilege escalation
-- User scanner — checks for accounts with UID 0 that aren't root, empty passwords, passwordless sudo, repeated failed SSH logins, and root logins via SSH
-- Network scanner — flags listeners on known backdoor ports (4444, 1337, 31337, etc.), raw sockets, and unexpected services exposed on all interfaces
+- File integrity — hashes critical system files and alerts if anything changes (uses SHA-256)
+- Process scanner — looks for processes running from /tmp, suspicious tool names (nc, nmap, xmrig, etc.), and privilege escalation
+- User scanner — checks for accounts with UID 0 that aren't root, empty passwords, and passwordless sudo
+- Network scanner — flags listeners on known backdoor ports (4444, 1337, 31337, etc.) and unexpected services exposed on all interfaces
 
 **Auditors:**
 - Firewall — checks if UFW is actually enabled, if iptables defaults are secure, and if SSH is rate-limited
-- Permissions — finds unexpected SUID binaries, world-writable files in /etc and /usr/bin, missing sticky bit on /tmp, and files with no valid owner
+- Permissions — finds unexpected SUID binaries, world-writable files in /etc and /usr/bin, and files with no valid owner
 - Packages — checks for pending security updates and whether your apt cache is stale
 
 **When LOCKDOWN triggers, it automatically:**
@@ -124,8 +124,8 @@ linux-system-integrity-monitor/
 │   ├── reporter.py              # The colored terminal output using the rich library
 │   ├── scanner/
 │   │   ├── file_integrity.py    # Compares current file hashes to baseline
-│   │   ├── process_scanner.py   # 8 different process-based heuristics using psutil
-│   │   ├── user_scanner.py      # Checks passwd, shadow, sudoers, and auth.log
+│   │   ├── process_scanner.py   # Process-based heuristics using psutil
+│   │   ├── user_scanner.py      # Checks passwd, shadow, and sudoers
 │   │   └── network_scanner.py   # Checks active network connections for red flags
 │   ├── auditor/
 │   │   ├── firewall.py          # Runs ufw and iptables commands to check config
@@ -144,8 +144,6 @@ linux-system-integrity-monitor/
 │   ├── demo_lockdown_response.sh   # Demo: full lockdown cycle with iptables
 │   └── run_all_demos.sh         # Runs demos 1-4 back to back
 ├── tests/                       # Unit tests (all mocked, no root needed)
-├── src/
-│   └── integrity_monitor.py     # Sprint 1 version (kept for reference, deprecated)
 ├── requirements.txt
 └── setup.sh
 ```
@@ -221,7 +219,7 @@ The test suite doesn't need root because all the system calls (psutil, subproces
 pytest tests/ -v --tb=short
 ```
 
-We have 60 tests covering all the main detection logic, safety checks in the responders, and edge cases like missing baselines or missing dependencies.
+We have 53 tests covering all the main detection logic, safety checks in the responders, and edge cases like missing baselines or missing dependencies.
 
 ---
 
@@ -247,7 +245,6 @@ This is an academic project so there are some things it can't do:
 
 - **Kernel rootkits** — if an attacker has kernel-level access they can hide processes and files from the OS APIs we rely on. This tool operates entirely in userspace.
 - **Compromised baseline** — if the system was already hacked before you ran `--baseline`, the baseline is worthless. Always create it on a clean system.
-- **LD_PRELOAD against itself** — if a rootkit hooks the Python interpreter via LD_PRELOAD before LSIM runs, our readings could be manipulated.
 - **Not a real SIEM** — this is not a replacement for actual enterprise security tools like Splunk, CrowdStrike, Wazuh, etc. It's a proof of concept built for a class project.
 
 ---

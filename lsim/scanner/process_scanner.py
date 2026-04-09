@@ -1,9 +1,8 @@
 """
-Process Scanner — detects malicious or suspicious running processes.
-Uses psutil for all process inspection.
+Process scanner - checks running processes for anything suspicious.
+Uses psutil to read process info from /proc.
 """
 
-import os
 import socket
 
 from lsim.config import (
@@ -33,18 +32,13 @@ class ProcessScanner:
         findings = []
         findings += self._check_suspicious_names(psutil)
         findings += self._check_suspicious_paths(psutil)
-        findings += self._check_hidden_procs(psutil)
         findings += self._check_priv_escalation(psutil)
         findings += self._check_unusual_listeners(psutil)
-        findings += self._check_ld_preload(psutil)
-        findings += self._check_deleted_exec(psutil)
         findings += self._check_cpu_hog(psutil)
         return findings
 
-    # ------------------------------------------------------------------
-    # Heuristic: suspicious process name
-    # ------------------------------------------------------------------
     def _check_suspicious_names(self, psutil) -> list:
+        """Flag processes whose name matches a known hacking/malware tool."""
         findings = []
         for proc in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
             try:
@@ -56,11 +50,11 @@ class ProcessScanner:
                         severity=SEVERITY_HIGH,
                         title=f"Suspicious process name: {info['name']}",
                         detail=(
-                            f"PID {info['pid']} has a known-suspicious process name '{info['name']}'.\n"
+                            f"PID {info['pid']} has a suspicious process name '{info['name']}'.\n"
                             f"  Executable: {info.get('exe') or 'unknown'}\n"
                             f"  Command: {' '.join(info.get('cmdline') or [])}"
                         ),
-                        recommendation=f"Investigate PID {info['pid']} ({info['name']}) and terminate if unauthorized.",
+                        recommendation=f"Investigate PID {info['pid']} and terminate if unauthorized.",
                         pid=info["pid"],
                         auto_remediate=False,
                     ))
@@ -68,10 +62,8 @@ class ProcessScanner:
                 continue
         return findings
 
-    # ------------------------------------------------------------------
-    # Heuristic: process running from suspicious path
-    # ------------------------------------------------------------------
     def _check_suspicious_paths(self, psutil) -> list:
+        """Flag processes running from world-writable directories like /tmp."""
         findings = []
         for proc in psutil.process_iter(["pid", "name", "exe"]):
             try:
@@ -84,11 +76,11 @@ class ProcessScanner:
                             title=f"Process running from suspicious path: {exe}",
                             detail=(
                                 f"PID {proc.info['pid']} ({proc.info['name']}) is executing "
-                                f"from {exe}, which is a world-writable or temp directory."
+                                f"from {exe}, which is a world-writable directory."
                             ),
                             recommendation=(
-                                f"Terminate PID {proc.info['pid']} immediately and investigate "
-                                f"how the binary ended up in {sus_path}."
+                                f"Terminate PID {proc.info['pid']} and check how the binary "
+                                f"ended up in {sus_path}."
                             ),
                             pid=proc.info["pid"],
                             auto_remediate=True,
@@ -98,40 +90,8 @@ class ProcessScanner:
                 continue
         return findings
 
-    # ------------------------------------------------------------------
-    # Heuristic: hidden processes (in /proc but absent from psutil.pids())
-    # ------------------------------------------------------------------
-    def _check_hidden_procs(self, psutil) -> list:
-        findings = []
-        try:
-            known_pids = set(psutil.pids())
-            proc_pids = set()
-            for entry in os.listdir("/proc"):
-                if entry.isdigit():
-                    proc_pids.add(int(entry))
-
-            hidden = proc_pids - known_pids
-            for pid in hidden:
-                findings.append(Finding(
-                    category="Process",
-                    severity=SEVERITY_CRITICAL,
-                    title=f"Hidden process detected: PID {pid}",
-                    detail=(
-                        f"PID {pid} exists in /proc but is not visible via normal process APIs. "
-                        "This may indicate a rootkit or kernel-level process hiding."
-                    ),
-                    recommendation="Investigate with 'ls -la /proc/{pid}'. Consider booting into recovery mode.",
-                    pid=pid,
-                    auto_remediate=False,
-                ))
-        except PermissionError:
-            pass
-        return findings
-
-    # ------------------------------------------------------------------
-    # Heuristic: privilege escalation (euid=0 but ruid != 0)
-    # ------------------------------------------------------------------
     def _check_priv_escalation(self, psutil) -> list:
+        """Flag processes where effective UID is 0 but real UID is not (SUID abuse)."""
         findings = []
         for proc in psutil.process_iter(["pid", "name", "exe", "uids"]):
             try:
@@ -146,10 +106,10 @@ class ProcessScanner:
                         title=f"Privilege escalation detected: PID {proc.info['pid']}",
                         detail=(
                             f"PID {proc.info['pid']} ({proc.info['name']}) has effective UID 0 "
-                            f"but real UID {real_uid}. This indicates SUID execution or privilege escalation.\n"
+                            f"but real UID {real_uid}. This could mean SUID abuse or privilege escalation.\n"
                             f"  Executable: {proc.info.get('exe') or 'unknown'}"
                         ),
-                        recommendation=f"Verify that PID {proc.info['pid']} is a known SUID binary.",
+                        recommendation=f"Verify PID {proc.info['pid']} is a known SUID binary.",
                         pid=proc.info["pid"],
                         auto_remediate=False,
                     ))
@@ -157,10 +117,8 @@ class ProcessScanner:
                 continue
         return findings
 
-    # ------------------------------------------------------------------
-    # Heuristic: unusual listener on suspicious port
-    # ------------------------------------------------------------------
     def _check_unusual_listeners(self, psutil) -> list:
+        """Flag processes listening on ports associated with attack tools."""
         findings = []
         try:
             for conn in psutil.net_connections(kind="inet"):
@@ -183,10 +141,10 @@ class ProcessScanner:
                         severity=SEVERITY_HIGH,
                         title=f"Process listening on suspicious port {port}",
                         detail=(
-                            f"Port {port} ({SUSPICIOUS_PORTS[port]}) is open and being listened on.\n"
+                            f"Port {port} ({SUSPICIOUS_PORTS[port]}) is open.\n"
                             f"  PID: {pid}  Process: {name}  Executable: {exe}"
                         ),
-                        recommendation=f"Investigate why port {port} is open and kill the process if unauthorized.",
+                        recommendation=f"Investigate port {port} and kill the process if unauthorized.",
                         pid=pid,
                         auto_remediate=False,
                     ))
@@ -194,72 +152,11 @@ class ProcessScanner:
             pass
         return findings
 
-    # ------------------------------------------------------------------
-    # Heuristic: LD_PRELOAD injection
-    # ------------------------------------------------------------------
-    def _check_ld_preload(self, psutil) -> list:
-        findings = []
-        for proc in psutil.process_iter(["pid", "name", "exe"]):
-            try:
-                env = proc.environ()
-                if "LD_PRELOAD" in env:
-                    findings.append(Finding(
-                        category="Process",
-                        severity=SEVERITY_HIGH,
-                        title=f"LD_PRELOAD detected in process environment: PID {proc.info['pid']}",
-                        detail=(
-                            f"PID {proc.info['pid']} ({proc.info['name']}) has LD_PRELOAD set:\n"
-                            f"  LD_PRELOAD={env['LD_PRELOAD']}\n"
-                            f"  Executable: {proc.info.get('exe') or 'unknown'}"
-                        ),
-                        recommendation="LD_PRELOAD can be used to hijack library calls. Investigate this process.",
-                        pid=proc.info["pid"],
-                        auto_remediate=False,
-                    ))
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        return findings
-
-    # ------------------------------------------------------------------
-    # Heuristic: deleted executable (process running from deleted binary)
-    # ------------------------------------------------------------------
-    def _check_deleted_exec(self, psutil) -> list:
-        findings = []
-        for proc in psutil.process_iter(["pid", "name"]):
-            try:
-                exe_link = f"/proc/{proc.info['pid']}/exe"
-                if not os.path.lexists(exe_link):
-                    continue
-                try:
-                    target = os.readlink(exe_link)
-                except OSError:
-                    continue
-                if "(deleted)" in target:
-                    findings.append(Finding(
-                        category="Process",
-                        severity=SEVERITY_HIGH,
-                        title=f"Process running from deleted executable: PID {proc.info['pid']}",
-                        detail=(
-                            f"PID {proc.info['pid']} ({proc.info['name']}) is running from a "
-                            f"deleted binary: {target}\n"
-                            "This is a common technique used by malware to hide on disk."
-                        ),
-                        recommendation=f"Investigate and terminate PID {proc.info['pid']}.",
-                        pid=proc.info["pid"],
-                        auto_remediate=True,
-                    ))
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        return findings
-
-    # ------------------------------------------------------------------
-    # Heuristic: CPU hog (potential cryptominer) — sampled, run last
-    # ------------------------------------------------------------------
     def _check_cpu_hog(self, psutil) -> list:
+        """Flag non-system processes using >90% CPU with no terminal (possible miner)."""
         findings = []
         for proc in psutil.process_iter(["pid", "name", "exe", "terminal"]):
             try:
-                # Skip kernel threads and system processes (uid 0 with known paths)
                 if proc.info.get("terminal") is not None:
                     continue
                 uids = proc.uids()
@@ -272,8 +169,8 @@ class ProcessScanner:
                         severity=SEVERITY_MEDIUM,
                         title=f"High CPU usage by non-system process: PID {proc.info['pid']}",
                         detail=(
-                            f"PID {proc.info['pid']} ({proc.info['name']}) is consuming {cpu:.1f}% CPU "
-                            "with no controlling terminal. This may indicate a cryptominer.\n"
+                            f"PID {proc.info['pid']} ({proc.info['name']}) is using {cpu:.1f}% CPU "
+                            "with no controlling terminal. Could be a cryptominer.\n"
                             f"  Executable: {proc.info.get('exe') or 'unknown'}"
                         ),
                         recommendation=f"Investigate PID {proc.info['pid']} for unauthorized CPU usage.",

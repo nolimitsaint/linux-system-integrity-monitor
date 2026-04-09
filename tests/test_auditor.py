@@ -116,28 +116,5 @@ class TestPermissionsAuditor(unittest.TestCase):
         self.assertEqual(findings[0].severity, SEVERITY_CRITICAL)
         self.assertIn("/etc/passwd", findings[0].title)
 
-    def test_detects_missing_tmp_sticky_bit(self):
-        import stat
-        # Mode 0o777 — no sticky bit
-        mock_stat = MagicMock()
-        mock_stat.st_mode = 0o777  # drwxrwxrwx — missing sticky bit
-        with patch("lsim.auditor.permissions.os.stat", return_value=mock_stat):
-            auditor = PermissionsAuditor()
-            findings = auditor._check_tmp_sticky()
-
-        self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].severity, SEVERITY_HIGH)
-        self.assertIn("/tmp", findings[0].title)
-
-    def test_no_finding_when_tmp_has_sticky_bit(self):
-        import stat as stat_mod
-        mock_stat = MagicMock()
-        mock_stat.st_mode = 0o41777  # drwxrwxrwt — sticky bit set
-        with patch("lsim.auditor.permissions.os.stat", return_value=mock_stat):
-            auditor = PermissionsAuditor()
-            findings = auditor._check_tmp_sticky()
-        self.assertEqual(findings, [])
-
-
 if __name__ == "__main__":
     unittest.main()
